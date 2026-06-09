@@ -1,7 +1,15 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { marked } from "marked";
 import * as data from "../data/index.js";
 import type { Plan, Task, PlanComment, TaskComment } from "../db/schema.js";
+
+// Render a comment body as markdown. POC threat model: authors are the local
+// human + trusted agents, so we don't sanitize marked's HTML output.
+marked.setOptions({ breaks: true, gfm: true });
+function md(src: string): string {
+  return marked.parse(src, { async: false }) as string;
+}
 
 const app = new Hono();
 
@@ -35,6 +43,12 @@ function page(title: string, body: string): string {
   input, textarea { font: inherit; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; width: 100%; box-sizing: border-box; }
   button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; width: fit-content; }
   .comment { border-left: 3px solid #ddd; padding: 0.25rem 0 0.25rem 0.75rem; margin: 0.5rem 0; }
+  .comment .body > :first-child { margin-top: 0.25rem; }
+  .comment .body > :last-child { margin-bottom: 0; }
+  .comment .body code { background: #8881; padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.9em; }
+  .comment .body pre { background: #8881; padding: 0.6rem 0.8rem; border-radius: 6px; overflow-x: auto; }
+  .comment .body pre code { background: none; padding: 0; }
+  .comment .body ol, .comment .body ul { padding-left: 1.4rem; }
   nav { margin-bottom: 1rem; }
 </style>
 </head>
@@ -50,7 +64,7 @@ function statusBadge(s: string): string {
 }
 
 function commentBlock(c: PlanComment | TaskComment): string {
-  return `<div class="comment"><div class="muted">${esc(c.author)} · ${c.createdAt.toISOString()}</div><div>${esc(c.body)}</div></div>`;
+  return `<div class="comment"><div class="muted">${esc(c.author)} · ${c.createdAt.toISOString()}</div><div class="body">${md(c.body)}</div></div>`;
 }
 
 // ---- routes ----
