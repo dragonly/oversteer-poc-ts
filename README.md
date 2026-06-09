@@ -40,6 +40,30 @@ npm run cli -- plan list
 
 > schema 稳定后可改用 `npm run db:generate` + `npm run db:migrate` 留迁移历史。
 
+## 让 agent 全局用 `oversteer`
+
+agent 不应该被迫先 `cd` 进项目才能调 CLI。装一次全局软链接:
+
+```bash
+cd ~/agent/oversteer-poc-ts
+npm link            # 把 `oversteer` 挂到全局 PATH
+```
+
+之后在**任意目录**都能直接用:
+
+```bash
+oversteer plan list
+oversteer --json plan get <planId>
+```
+
+原理:`bin/oversteer.mjs` 是个 node 启动器,根据自身真实位置(npm link 的 symlink 会被解析到这里)定位项目根,再调**项目本地的 tsx** 跑 `src/cli/index.ts`。所以:
+
+- 只依赖全局有 `node`(必然有),不依赖全局 tsx,也不走慢的 `npx`。
+- 从任意 cwd 调用,drizzle/pg 等依赖都从项目自己的 `node_modules` 解析。
+- `.env` 由 `src/db/client.ts` 从项目根显式加载(`process.loadEnvFile`),不受 cwd 影响;没 `.env` 时回退到默认连接串。
+
+卸载:`npm rm -g oversteer-poc`。
+
 ## CLI(agent 侧)
 
 所有命令支持 `--json`(给 agent host),默认人类可读文本。
@@ -59,11 +83,11 @@ oversteer comments plan <planId>                     # 读 plan 评论流
 oversteer comments task <taskId>                     # 读 task 评论流
 ```
 
-跑时用 `npm run cli -- <args>`,例如:
+跑时用 `npm run cli -- <args>`(项目内)或全局 `oversteer <args>`(任意目录,需先 `npm link`),例如:
 
 ```bash
 npm run cli -- task create --plan <planId> --title "实现 X" --intent "..."
-npm run cli -- --json plan get <planId>
+oversteer --json plan get <planId>
 ```
 
 ## Web(人侧)
@@ -98,4 +122,6 @@ src/
   data/index.ts    CLI 与 web 共用的数据访问函数
   cli/index.ts     agent 侧 CLI(commander)
   web/server.ts    人侧 web(hono, SSR HTML)
+bin/
+  oversteer.mjs    全局 CLI 启动器(npm link 的入口)
 ```

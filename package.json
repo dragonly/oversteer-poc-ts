@@ -5,7 +5,7 @@
   "type": "module",
   "description": "oversteer.ai POC — human builds plans (web), agent works tasks (CLI), both comment. Postgres-backed.",
   "bin": {
-    "oversteer": "src/cli/index.ts"
+    "oversteer": "bin/oversteer.mjs"
   },
   "scripts": {
     "cli": "tsx src/cli/index.ts",

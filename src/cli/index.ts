@@ -1,4 +1,3 @@
-#!/usr/bin/env -S npx tsx
 import { Command } from "commander";
 import * as data from "../data/index.js";
 import { pool } from "../db/client.js";
