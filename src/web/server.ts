@@ -1,7 +1,15 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { marked } from "marked";
 import * as data from "../data/index.js";
 import type { Plan, Task, PlanComment, TaskComment } from "../db/schema.js";
+
+// Render a comment body as markdown. POC threat model: authors are the local
+// human + trusted agents, so we don't sanitize marked's HTML output.
+marked.setOptions({ breaks: true, gfm: true });
+function md(src: string): string {
+  return marked.parse(src, { async: false }) as string;
+}
 
 const app = new Hono();
 
@@ -35,12 +43,44 @@ function page(title: string, body: string): string {
   input, textarea { font: inherit; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; width: 100%; box-sizing: border-box; }
   button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; width: fit-content; }
   .comment { border-left: 3px solid #ddd; padding: 0.25rem 0 0.25rem 0.75rem; margin: 0.5rem 0; }
+  .comment .body > :first-child { margin-top: 0.25rem; }
+  .comment .body > :last-child { margin-bottom: 0; }
+  .comment .body code { background: #8881; padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.9em; }
+  .comment .body pre { background: #8881; padding: 0.6rem 0.8rem; border-radius: 6px; overflow-x: auto; }
+  .comment .body pre code { background: none; padding: 0; }
+  .comment .body ol, .comment .body ul { padding-left: 1.4rem; }
   nav { margin-bottom: 1rem; }
 </style>
 </head>
 <body>
 <nav><a href="/">&larr; all plans</a></nav>
 ${body}
+<script>
+// POC auto-refresh: poll the current page and swap only the regions tagged
+// [data-live] when their HTML changes. No SPA framework — keeps forms, scroll,
+// and focus intact so the human sees agent comments appear without a manual reload.
+(function () {
+  var INTERVAL = 4000;
+  function live() { return document.querySelectorAll('[data-live]'); }
+  if (!live().length) return;
+  async function tick() {
+    try {
+      var res = await fetch(location.href, { headers: { 'x-live': '1' } });
+      if (!res.ok) return;
+      var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      live().forEach(function (el) {
+        var key = el.getAttribute('data-live');
+        var next = doc.querySelector('[data-live="' + key + '"]');
+        // Don't clobber a region the user is typing into.
+        if (next && next.innerHTML !== el.innerHTML && !el.contains(document.activeElement)) {
+          el.innerHTML = next.innerHTML;
+        }
+      });
+    } catch (e) { /* transient; try again next tick */ }
+  }
+  setInterval(tick, INTERVAL);
+})();
+</script>
 </body>
 </html>`;
 }
@@ -49,8 +89,18 @@ function statusBadge(s: string): string {
   return `<span class="badge">${esc(s)}</span>`;
 }
 
+// Render a PR ref like `owner/repo#42` as a clickable GitHub PR link.
+// Falls back to plain text for anything that doesn't match.
+function prLink(ref: string): string {
+  const m = ref.match(/^([\w.-]+)\/([\w.-]+)#(\d+)$/);
+  if (!m) return `<span class="muted">${esc(ref)}</span>`;
+  const [, owner, repo, num] = m;
+  const url = `https://github.com/${owner}/${repo}/pull/${num}`;
+  return `<a class="muted" href="${esc(url)}" target="_blank" rel="noopener">${esc(ref)}</a>`;
+}
+
 function commentBlock(c: PlanComment | TaskComment): string {
-  return `<div class="comment"><div class="muted">${esc(c.author)} · ${c.createdAt.toISOString()}</div><div>${esc(c.body)}</div></div>`;
+  return `<div class="comment"><div class="muted">${esc(c.author)} · ${c.createdAt.toISOString()}</div><div class="body">${md(c.body)}</div></div>`;
 }
 
 // ---- routes ----
@@ -93,7 +143,7 @@ app.get("/plans/:id", async (c) => {
   const taskRows = tasks
     .map(
       (t: Task) =>
-        `<div class="card"><a href="/tasks/${t.id}">${esc(t.title)}</a> ${statusBadge(t.status)}${t.prRef ? ` <span class="muted">${esc(t.prRef)}</span>` : ""}</div>`,
+        `<div class="card"><a href="/tasks/${t.id}">${esc(t.title)}</a> ${statusBadge(t.status)}${t.prRef ? ` ${prLink(t.prRef)}` : ""}</div>`,
     )
     .join("");
   const body = `
@@ -102,10 +152,14 @@ app.get("/plans/:id", async (c) => {
 <div class="muted">${plan.id}</div>
 
 <h2>Tasks (${tasks.length})</h2>
+<div data-live="tasks">
 ${taskRows || "<p class='muted'>(no tasks yet — agents create these via CLI)</p>"}
+</div>
 
 <h2>Comments (${comments.length})</h2>
+<div data-live="plan-comments">
 ${comments.map(commentBlock).join("") || "<p class='muted'>(none)</p>"}
+</div>
 <form method="post" action="/plans/${plan.id}/comments">
   <input name="author" value="human:yilongli" />
   <textarea name="body" placeholder="comment" rows="2" required></textarea>
@@ -133,11 +187,13 @@ app.get("/tasks/:id", async (c) => {
 <nav><a href="/plans/${task.planId}">&larr; back to plan</a></nav>
 <h1>${esc(task.title)} ${statusBadge(task.status)}</h1>
 <div class="intent">${esc(task.intent)}</div>
-${task.prRef ? `<p>PR: <span class="muted">${esc(task.prRef)}</span></p>` : ""}
+${task.prRef ? `<p>PR: ${prLink(task.prRef)}</p>` : ""}
 <div class="muted">${task.id}</div>
 
 <h2>Comments (${comments.length})</h2>
+<div data-live="task-comments">
 ${comments.map(commentBlock).join("") || "<p class='muted'>(none)</p>"}
+</div>
 <form method="post" action="/tasks/${task.id}/comments">
   <input name="author" value="human:yilongli" />
   <textarea name="body" placeholder="comment" rows="2" required></textarea>
