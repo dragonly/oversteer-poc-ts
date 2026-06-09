@@ -89,6 +89,16 @@ function statusBadge(s: string): string {
   return `<span class="badge">${esc(s)}</span>`;
 }
 
+// Render a PR ref like `owner/repo#42` as a clickable GitHub PR link.
+// Falls back to plain text for anything that doesn't match.
+function prLink(ref: string): string {
+  const m = ref.match(/^([\w.-]+)\/([\w.-]+)#(\d+)$/);
+  if (!m) return `<span class="muted">${esc(ref)}</span>`;
+  const [, owner, repo, num] = m;
+  const url = `https://github.com/${owner}/${repo}/pull/${num}`;
+  return `<a class="muted" href="${esc(url)}" target="_blank" rel="noopener">${esc(ref)}</a>`;
+}
+
 function commentBlock(c: PlanComment | TaskComment): string {
   return `<div class="comment"><div class="muted">${esc(c.author)} · ${c.createdAt.toISOString()}</div><div class="body">${md(c.body)}</div></div>`;
 }
@@ -133,7 +143,7 @@ app.get("/plans/:id", async (c) => {
   const taskRows = tasks
     .map(
       (t: Task) =>
-        `<div class="card"><a href="/tasks/${t.id}">${esc(t.title)}</a> ${statusBadge(t.status)}${t.prRef ? ` <span class="muted">${esc(t.prRef)}</span>` : ""}</div>`,
+        `<div class="card"><a href="/tasks/${t.id}">${esc(t.title)}</a> ${statusBadge(t.status)}${t.prRef ? ` ${prLink(t.prRef)}` : ""}</div>`,
     )
     .join("");
   const body = `
@@ -177,7 +187,7 @@ app.get("/tasks/:id", async (c) => {
 <nav><a href="/plans/${task.planId}">&larr; back to plan</a></nav>
 <h1>${esc(task.title)} ${statusBadge(task.status)}</h1>
 <div class="intent">${esc(task.intent)}</div>
-${task.prRef ? `<p>PR: <span class="muted">${esc(task.prRef)}</span></p>` : ""}
+${task.prRef ? `<p>PR: ${prLink(task.prRef)}</p>` : ""}
 <div class="muted">${task.id}</div>
 
 <h2>Comments (${comments.length})</h2>
