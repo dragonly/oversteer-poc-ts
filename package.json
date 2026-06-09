@@ -1,0 +1,32 @@
+{
+  "name": "oversteer-poc",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "oversteer.ai POC — human builds plans (web), agent works tasks (CLI), both comment. Postgres-backed.",
+  "bin": {
+    "oversteer": "src/cli/index.ts"
+  },
+  "scripts": {
+    "cli": "tsx src/cli/index.ts",
+    "web": "tsx src/web/server.ts",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "commander": "^12.1.0",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.13",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.28.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
