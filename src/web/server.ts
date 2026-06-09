@@ -55,6 +55,32 @@ function page(title: string, body: string): string {
 <body>
 <nav><a href="/">&larr; all plans</a></nav>
 ${body}
+<script>
+// POC auto-refresh: poll the current page and swap only the regions tagged
+// [data-live] when their HTML changes. No SPA framework — keeps forms, scroll,
+// and focus intact so the human sees agent comments appear without a manual reload.
+(function () {
+  var INTERVAL = 4000;
+  function live() { return document.querySelectorAll('[data-live]'); }
+  if (!live().length) return;
+  async function tick() {
+    try {
+      var res = await fetch(location.href, { headers: { 'x-live': '1' } });
+      if (!res.ok) return;
+      var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      live().forEach(function (el) {
+        var key = el.getAttribute('data-live');
+        var next = doc.querySelector('[data-live="' + key + '"]');
+        // Don't clobber a region the user is typing into.
+        if (next && next.innerHTML !== el.innerHTML && !el.contains(document.activeElement)) {
+          el.innerHTML = next.innerHTML;
+        }
+      });
+    } catch (e) { /* transient; try again next tick */ }
+  }
+  setInterval(tick, INTERVAL);
+})();
+</script>
 </body>
 </html>`;
 }
@@ -116,10 +142,14 @@ app.get("/plans/:id", async (c) => {
 <div class="muted">${plan.id}</div>
 
 <h2>Tasks (${tasks.length})</h2>
+<div data-live="tasks">
 ${taskRows || "<p class='muted'>(no tasks yet — agents create these via CLI)</p>"}
+</div>
 
 <h2>Comments (${comments.length})</h2>
+<div data-live="plan-comments">
 ${comments.map(commentBlock).join("") || "<p class='muted'>(none)</p>"}
+</div>
 <form method="post" action="/plans/${plan.id}/comments">
   <input name="author" value="human:yilongli" />
   <textarea name="body" placeholder="comment" rows="2" required></textarea>
@@ -151,7 +181,9 @@ ${task.prRef ? `<p>PR: <span class="muted">${esc(task.prRef)}</span></p>` : ""}
 <div class="muted">${task.id}</div>
 
 <h2>Comments (${comments.length})</h2>
+<div data-live="task-comments">
 ${comments.map(commentBlock).join("") || "<p class='muted'>(none)</p>"}
+</div>
 <form method="post" action="/tasks/${task.id}/comments">
   <input name="author" value="human:yilongli" />
   <textarea name="body" placeholder="comment" rows="2" required></textarea>
