@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { Plan, Task, PlanComment } from "../../db/schema.js";
 import { Layout } from "./Layout.js";
-import { Badge, PrLink, Comment, CommentForm } from "./components.js";
+import { Badge, PrLink, Comment, CommentForm, IntentText } from "./components.js";
 
 export const PlanListPage: FC<{ plans: Plan[] }> = ({ plans }) => (
   <Layout title="Plans">
@@ -39,7 +39,7 @@ export const PlanDetailPage: FC<{
     <h1>
       {plan.title} <Badge status={plan.status} />
     </h1>
-    <div class="intent">{plan.intent}</div>
+    <IntentText text={plan.intent} />
     <div class="muted">{plan.id}</div>
 
     <h2>Tasks ({tasks.length})</h2>

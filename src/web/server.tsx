@@ -8,6 +8,19 @@ const app = new Hono();
 
 // ---- routes ----
 
+// Resolve a bare id to its page. Autolinked ids in comments/intent point here
+// because a uuid alone doesn't say whether it's a plan or a task.
+app.get("/go/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    if (await data.getPlan(id)) return c.redirect(`/plans/${id}`);
+    if (await data.getTask(id)) return c.redirect(`/tasks/${id}`);
+  } catch {
+    // malformed id (not a uuid) — fall through to 404
+  }
+  return c.text(`not found: ${id}`, 404);
+});
+
 // plan list + create
 app.get("/", async (c) => {
   const plans = await data.listPlans();
