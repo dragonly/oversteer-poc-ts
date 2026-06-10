@@ -38,6 +38,32 @@ export async function setPlanStatus(id: string, status: Plan["status"]): Promise
   return row;
 }
 
+// Edit a plan's intent. Records a plan_intent_edited event carrying the old→new
+// diff so the change shows up in the activity stream and an agent polling ?since
+// can detect "intent changed" and re-plan. No-op (returns row) if unchanged.
+export async function updatePlanIntent(
+  id: string,
+  intent: string,
+  author: string,
+): Promise<Plan | undefined> {
+  const prev = await getPlan(id);
+  if (!prev) return undefined;
+  if (prev.intent === intent) return prev;
+  const [row] = await db
+    .update(plans)
+    .set({ intent, updatedAt: new Date() })
+    .where(eq(plans.id, id))
+    .returning();
+  if (!row) return undefined;
+  await addEvent({
+    planId: id,
+    kind: "plan_intent_edited",
+    author,
+    data: { old: prev.intent, new: row.intent },
+  });
+  return row;
+}
+
 // A plan with everything a reader (agent or human) needs in one shot.
 export async function getPlanFull(id: string): Promise<
   | {

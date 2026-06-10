@@ -106,11 +106,24 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
       text = `🔗 pr ${d.ref}`;
       break;
     case "plan_intent_edited":
-      text = `✏️ plan intent edited`;
-      break;
-    case "task_intent_edited":
-      text = `✏️ task intent edited`;
-      break;
+    case "task_intent_edited": {
+      // Show what changed: an expandable old→new diff so the reader can see the
+      // edit inline without leaving the stream (acceptance: "可看到改了什么").
+      const label = item.kind === "plan_intent_edited" ? "plan" : "task";
+      return (
+        <div class="event muted">
+          ✏️ {label} intent edited · {item.author} · {when} {taskTag}
+          <details>
+            <summary>diff</summary>
+            <div class="intent">
+              <s>{d.old}</s>
+              {"\n→\n"}
+              {d.new}
+            </div>
+          </details>
+        </div>
+      );
+    }
     default:
       text = item.kind;
   }

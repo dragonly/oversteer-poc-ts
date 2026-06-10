@@ -42,6 +42,14 @@ export const PlanDetailPage: FC<{
       {plan.title} <Badge status={plan.status} />
     </h1>
     <IntentText text={plan.intent} />
+    <details class="edit-intent">
+      <summary class="muted">edit intent</summary>
+      <form method="post" action={`/plans/${plan.id}/intent`}>
+        <input name="author" value="human:yilongli" />
+        <textarea name="intent" rows={8} required>{plan.intent}</textarea>
+        <button type="submit">Save intent</button>
+      </form>
+    </details>
     <div class="muted">{plan.id}</div>
 
     <h2>Tasks ({tasks.length})</h2>

@@ -36,6 +36,17 @@ app.post("/plans", async (c) => {
   return c.redirect(`/plans/${plan.id}`);
 });
 
+app.post("/plans/:id/intent", async (c) => {
+  const planId = c.req.param("id");
+  const form = await c.req.formData();
+  const author = String(form.get("author") ?? "human:web").trim() || "human:web";
+  const intent = String(form.get("intent") ?? "").trim();
+  if (!intent) return c.text("intent required", 400);
+  const updated = await data.updatePlanIntent(planId, intent, author);
+  if (!updated) return c.text("plan not found", 404);
+  return c.redirect(`/plans/${planId}`);
+});
+
 // plan detail: tasks + unified activity stream
 app.get("/plans/:id", async (c) => {
   const full = await data.getPlanFull(c.req.param("id"));
@@ -88,6 +99,15 @@ api.get("/plans/:id", async (c) => {
   const full = await data.getPlanFull(c.req.param("id"));
   if (!full) return c.json({ error: `plan not found: ${c.req.param("id")}` }, 404);
   return c.json(full);
+});
+
+api.patch("/plans/:id", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json().catch(() => ({}) as Record<string, string>);
+  if (b.intent === undefined) return c.json({ error: "intent required" }, 400);
+  const updated = await data.updatePlanIntent(id, b.intent, b.author ?? "human:api");
+  if (!updated) return c.json({ error: `plan not found: ${id}` }, 404);
+  return c.json(updated);
 });
 
 api.get("/plans/:id/tasks", async (c) => c.json(await data.listTasksByPlan(c.req.param("id"))));
