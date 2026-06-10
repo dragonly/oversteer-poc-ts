@@ -36,11 +36,12 @@ app.post("/plans", async (c) => {
   return c.redirect(`/plans/${plan.id}`);
 });
 
-// plan detail: tasks + plan comments
+// plan detail: tasks + unified activity stream
 app.get("/plans/:id", async (c) => {
   const full = await data.getPlanFull(c.req.param("id"));
   if (!full) return c.text("plan not found", 404);
-  return c.html(<PlanDetailPage {...full} />);
+  const activity = await data.getPlanActivity(c.req.param("id"));
+  return c.html(<PlanDetailPage {...full} activity={activity} />);
 });
 
 app.post("/plans/:id/comments", async (c) => {
@@ -94,10 +95,24 @@ api.post("/plans/:id/tasks", async (c) => {
   if (!(await data.getPlan(planId))) return c.json({ error: `plan not found: ${planId}` }, 404);
   const b = await c.req.json().catch(() => ({}) as Record<string, string>);
   if (!b.title || !b.intent) return c.json({ error: "title and intent required" }, 400);
-  return c.json(await data.createTask({ planId, title: b.title, intent: b.intent }), 201);
+  return c.json(await data.createTask({ planId, title: b.title, intent: b.intent, author: b.author }), 201);
 });
 
 api.get("/plans/:id/comments", async (c) => c.json(await data.listPlanComments(c.req.param("id"))));
+
+// Unified, incremental activity stream: every change anywhere under the plan
+// (plan + all tasks), time-ordered, optionally only what's new since ?since=<ISO>.
+api.get("/plans/:id/activity", async (c) => {
+  const planId = c.req.param("id");
+  if (!(await data.getPlan(planId))) return c.json({ error: `plan not found: ${planId}` }, 404);
+  const sinceRaw = c.req.query("since");
+  let since: Date | undefined;
+  if (sinceRaw) {
+    since = new Date(sinceRaw);
+    if (Number.isNaN(since.getTime())) return c.json({ error: `invalid since: ${sinceRaw}` }, 400);
+  }
+  return c.json(await data.getPlanActivity(planId, since));
+});
 
 api.post("/plans/:id/comments", async (c) => {
   const planId = c.req.param("id");
@@ -119,7 +134,12 @@ api.patch("/tasks/:id", async (c) => {
   if (b.status && !["todo", "in_progress", "done"].includes(b.status)) {
     return c.json({ error: `invalid status: ${b.status} (todo | in_progress | done)` }, 400);
   }
-  const t = await data.updateTask(id, { status: b.status as never, intent: b.intent, prRef: b.prRef });
+  const t = await data.updateTask(id, {
+    status: b.status as never,
+    intent: b.intent,
+    prRef: b.prRef,
+    author: b.author,
+  });
   if (!t) return c.json({ error: `task not found: ${id}` }, 404);
   return c.json(t);
 });

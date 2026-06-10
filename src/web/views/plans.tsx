@@ -1,7 +1,8 @@
 import type { FC } from "hono/jsx";
 import type { Plan, Task, PlanComment } from "../../db/schema.js";
+import type { Activity } from "../../data/index.js";
 import { Layout } from "./Layout.js";
-import { Badge, PrLink, Comment, CommentForm, IntentText } from "./components.js";
+import { Badge, PrLink, ActivityRow, CommentForm, IntentText } from "./components.js";
 
 export const PlanListPage: FC<{ plans: Plan[] }> = ({ plans }) => (
   <Layout title="Plans">
@@ -34,7 +35,8 @@ export const PlanDetailPage: FC<{
   plan: Plan;
   tasks: Task[];
   comments: PlanComment[];
-}> = ({ plan, tasks, comments }) => (
+  activity: Activity[];
+}> = ({ plan, tasks, activity }) => (
   <Layout title={plan.title}>
     <h1>
       {plan.title} <Badge status={plan.status} />
@@ -56,10 +58,10 @@ export const PlanDetailPage: FC<{
       )}
     </div>
 
-    <h2>Comments ({comments.length})</h2>
-    <div data-live="plan-comments">
-      {comments.length ? (
-        comments.map((c) => <Comment comment={c} />)
+    <h2>Activity ({activity.length})</h2>
+    <div data-live="activity">
+      {activity.length ? (
+        activity.map((a) => <ActivityRow item={a} />)
       ) : (
         <p class="muted">(none)</p>
       )}

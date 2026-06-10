@@ -5,6 +5,7 @@ import {
   timestamp,
   pgEnum,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // status enums kept minimal per POC doc (open/done, todo/in_progress/done)
@@ -74,6 +75,42 @@ export const taskComments = pgTable(
     taskIdx: index("idx_task_comments").on(t.taskId, t.id),
   }),
 );
+
+// Append-only audit of meaningful state changes that the current-state tables
+// can NOT reconstruct on their own (a task row only keeps its latest status /
+// prRef / intent, not the history of how it got there). Comments are NOT copied
+// here — they already live in plan_comments / task_comments and the activity
+// stream unions them in at read time. This table only records the deltas.
+export const eventKind = pgEnum("event_kind", [
+  "task_created",
+  "status_changed",
+  "pr_set",
+  "plan_intent_edited",
+  "task_intent_edited",
+]);
+
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    // null for plan-scoped events (e.g. plan_intent_edited); set for task-scoped.
+    taskId: uuid("task_id").references(() => tasks.id),
+    kind: eventKind("kind").notNull(),
+    author: text("author").notNull(), // who triggered it: 'human:web' / 'agent:dev-1'
+    // structured payload, kind-dependent: { from, to } | { ref } | { old, new }
+    data: jsonb("data").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // (planId, createdAt) drives the plan-level `?since` incremental read.
+    planIdx: index("idx_events_plan").on(t.planId, t.createdAt),
+  }),
+);
+
+export type Event = typeof events.$inferSelect;
 
 export type Plan = typeof plans.$inferSelect;
 export type Task = typeof tasks.$inferSelect;

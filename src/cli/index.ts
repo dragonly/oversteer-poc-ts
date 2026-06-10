@@ -55,6 +55,26 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 type PlanFull = { plan: Plan; tasks: Task[]; comments: PlanComment[] };
 type TaskFull = { task: Task; comments: TaskComment[] };
 
+type Activity = {
+  id: string;
+  kind:
+    | "plan_comment"
+    | "task_comment"
+    | "task_created"
+    | "status_changed"
+    | "pr_set"
+    | "plan_intent_edited"
+    | "task_intent_edited";
+  at: string;
+  planId: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  author: string;
+  body: string | null;
+  inReplyTo: string | null;
+  data: Record<string, unknown> | null;
+};
+
 function ts(v: string | Date): string {
   return new Date(v).toISOString();
 }
@@ -70,6 +90,32 @@ function fmtTask(t: Task): string {
 
 function fmtComment(c: PlanComment | TaskComment): string {
   return `  - ${c.author} @ ${ts(c.createdAt)}\n    ${c.body}`;
+}
+
+// One line of context + (for comments) the body, so a reader sees the whole
+// stream in time order without cross-referencing tasks/comments by hand.
+function fmtActivity(a: Activity): string {
+  const when = ts(a.at);
+  const task = a.taskTitle ? ` (${a.taskTitle})` : "";
+  const d = (a.data ?? {}) as Record<string, string>;
+  switch (a.kind) {
+    case "plan_comment":
+      return `${when}  💬 ${a.author} on plan\n    ${a.body}`;
+    case "task_comment":
+      return `${when}  💬 ${a.author} on task${task}\n    ${a.body}`;
+    case "task_created":
+      return `${when}  ➕ task created${task} by ${a.author}`;
+    case "status_changed":
+      return `${when}  🔄 status ${d.from} → ${d.to}${task} by ${a.author}`;
+    case "pr_set":
+      return `${when}  🔗 pr ${d.ref}${task} by ${a.author}`;
+    case "plan_intent_edited":
+      return `${when}  ✏️ plan intent edited by ${a.author}`;
+    case "task_intent_edited":
+      return `${when}  ✏️ task intent edited${task} by ${a.author}`;
+    default:
+      return `${when}  ${a.kind} by ${a.author}`;
+  }
 }
 
 const program = new Command();
@@ -142,10 +188,12 @@ task
   .requiredOption("--plan <planId>", "plan id")
   .requiredOption("--title <title>", "task title")
   .requiredOption("--intent <intent>", "what this task does")
-  .action(async (opts: { plan: string; title: string; intent: string }) => {
+  .option("--author <author>", "who is creating it (for the activity stream)", "agent")
+  .action(async (opts: { plan: string; title: string; intent: string; author: string }) => {
     const t = await req<Task>("POST", `/plans/${opts.plan}/tasks`, {
       title: opts.title,
       intent: opts.intent,
+      author: opts.author,
     });
     out(() => console.log(fmtTask(t)), t);
   });
@@ -156,15 +204,17 @@ task
   .option("--status <status>", "todo | in_progress | done")
   .option("--intent <intent>", "new intent")
   .option("--pr-ref <ref>", "PR reference, e.g. owner/repo#42")
+  .option("--author <author>", "who is making the change (for the activity stream)", "agent")
   .action(
     async (
       taskId: string,
-      opts: { status?: string; intent?: string; prRef?: string },
+      opts: { status?: string; intent?: string; prRef?: string; author: string },
     ) => {
       const t = await req<Task>("PATCH", `/tasks/${taskId}`, {
         status: opts.status,
         intent: opts.intent,
         prRef: opts.prRef,
+        author: opts.author,
       });
       out(() => console.log(fmtTask(t)), t);
     },
@@ -214,6 +264,48 @@ comments
   .action(async (taskId: string) => {
     const rows = await req<TaskComment[]>("GET", `/tasks/${taskId}/comments`);
     out(() => rows.forEach((c) => console.log(fmtComment(c))), rows);
+  });
+
+// ---- activity (unified, incremental stream) ----
+const activity = program.command("activity").description("read a plan's unified activity stream");
+
+activity
+  .command("list", { isDefault: true })
+  .description("all activity under a plan (plan + tasks), time-ordered")
+  .requiredOption("--plan <planId>", "plan id")
+  .option("--since <iso>", "only events strictly after this ISO timestamp")
+  .action(async (opts: { plan: string; since?: string }) => {
+    const q = opts.since ? `?since=${encodeURIComponent(opts.since)}` : "";
+    const rows = await req<Activity[]>("GET", `/plans/${opts.plan}/activity${q}`);
+    out(() => {
+      if (rows.length === 0) return console.log("(no activity)");
+      for (const a of rows) console.log(fmtActivity(a));
+    }, rows);
+  });
+
+activity
+  .command("watch")
+  .description("poll a plan and print new activity as it arrives (Ctrl-C to stop)")
+  .requiredOption("--plan <planId>", "plan id")
+  .option("--since <iso>", "start watching from this ISO timestamp (default: now)")
+  .option("--interval <seconds>", "poll interval", "4")
+  .action(async (opts: { plan: string; since?: string; interval: string }) => {
+    let cursor = opts.since ?? new Date().toISOString();
+    const intervalMs = Math.max(1, Number(opts.interval)) * 1000;
+    // watch is inherently human/streaming; emit one JSON object per new event in
+    // --json mode so a host can consume it as a stream.
+    for (;;) {
+      const rows = await req<Activity[]>(
+        "GET",
+        `/plans/${opts.plan}/activity?since=${encodeURIComponent(cursor)}`,
+      );
+      for (const a of rows) {
+        if (JSON_MODE) console.log(JSON.stringify(a));
+        else console.log(fmtActivity(a));
+        if (a.at > cursor) cursor = a.at;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
   });
 
 async function main() {
