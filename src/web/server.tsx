@@ -24,7 +24,8 @@ app.get("/go/:id", async (c) => {
 // plan list + create
 app.get("/", async (c) => {
   const plans = await data.listPlans();
-  return c.html(<PlanListPage plans={plans} />);
+  const attention = await Promise.all(plans.map((p) => data.getPlanAttention(p.id)));
+  return c.html(<PlanListPage plans={plans} attention={attention} />);
 });
 
 app.post("/plans", async (c) => {
@@ -52,7 +53,8 @@ app.get("/plans/:id", async (c) => {
   const full = await data.getPlanFull(c.req.param("id"));
   if (!full) return c.text("plan not found", 404);
   const activity = await data.getPlanActivity(c.req.param("id"));
-  return c.html(<PlanDetailPage {...full} activity={activity} />);
+  const attention = await data.getPlanAttention(c.req.param("id"));
+  return c.html(<PlanDetailPage {...full} activity={activity} attention={attention} />);
 });
 
 app.post("/plans/:id/comments", async (c) => {
@@ -94,6 +96,13 @@ const api = new Hono();
 api.onError((err, c) => c.json({ error: err.message }, 500));
 
 api.get("/plans", async (c) => c.json(await data.listPlans()));
+
+// per-plan attention summary, derived from the stream (⏳ / 🤖 / ✅)
+api.get("/plans/:id/attention", async (c) => {
+  const id = c.req.param("id");
+  if (!(await data.getPlan(id))) return c.json({ error: `plan not found: ${id}` }, 404);
+  return c.json(await data.getPlanAttention(id));
+});
 
 api.get("/plans/:id", async (c) => {
   const full = await data.getPlanFull(c.req.param("id"));

@@ -323,3 +323,36 @@ export async function getPlanActivity(
   stream.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
   return stream;
 }
+
+// Plan-level attention summary, DERIVED from the stream + task statuses (no stored
+// flag) so a human sees "is this on me or on the agent?" at a glance — in the plan
+// list and at the top of the detail page — without reading every comment.
+//
+// Rule (first match wins):
+//   waiting_human : the most recent comment anywhere under the plan is by an agent
+//                   (agent said something last → ball is in the human's court).
+//   agent_working : otherwise, some task is in_progress.
+//   idle          : otherwise (no open work / nothing pending).
+export type Attention = {
+  state: "waiting_human" | "agent_working" | "idle";
+  emoji: string;
+  label: string;
+};
+
+export async function getPlanAttention(planId: string): Promise<Attention> {
+  const [planTasks, activity] = await Promise.all([
+    listTasksByPlan(planId),
+    getPlanActivity(planId),
+  ]);
+  const comments = activity.filter(
+    (a) => a.kind === "plan_comment" || a.kind === "task_comment",
+  );
+  const last = comments[comments.length - 1];
+  if (last && last.author.startsWith("agent")) {
+    return { state: "waiting_human", emoji: "⏳", label: "等你回复" };
+  }
+  if (planTasks.some((t) => t.status === "in_progress")) {
+    return { state: "agent_working", emoji: "🤖", label: "agent 工作中" };
+  }
+  return { state: "idle", emoji: "✅", label: "无待办" };
+}

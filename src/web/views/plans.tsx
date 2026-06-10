@@ -1,15 +1,19 @@
 import type { FC } from "hono/jsx";
 import type { Plan, Task, PlanComment } from "../../db/schema.js";
-import type { Activity } from "../../data/index.js";
+import type { Activity, Attention } from "../../data/index.js";
 import { Layout } from "./Layout.js";
 import { Badge, PrLink, ActivityRow, CommentForm, IntentText } from "./components.js";
 
-export const PlanListPage: FC<{ plans: Plan[] }> = ({ plans }) => (
+export const PlanListPage: FC<{ plans: Plan[]; attention: Attention[] }> = ({
+  plans,
+  attention,
+}) => (
   <Layout title="Plans">
     <h1>Plans</h1>
     {plans.length ? (
-      plans.map((p) => (
+      plans.map((p, i) => (
         <div class="card">
+          <span title={attention[i].state}>{attention[i].emoji} {attention[i].label}</span>{" "}
           <a href={`/plans/${p.id}`}>{p.title}</a> <Badge status={p.status} />
           <div class="muted">{p.id}</div>
         </div>
@@ -36,8 +40,12 @@ export const PlanDetailPage: FC<{
   tasks: Task[];
   comments: PlanComment[];
   activity: Activity[];
-}> = ({ plan, tasks, activity }) => (
+  attention: Attention;
+}> = ({ plan, tasks, activity, attention }) => (
   <Layout title={plan.title}>
+    <div class="card" title={attention.state}>
+      {attention.emoji} {attention.label}
+    </div>
     <h1>
       {plan.title} <Badge status={plan.status} />
     </h1>
