@@ -147,6 +147,7 @@ export async function addPlanComment(input: {
   planId: string;
   author: string;
   body: string;
+  inReplyTo?: string | null;
 }): Promise<PlanComment> {
   const [row] = await db.insert(planComments).values(input).returning();
   return row;
@@ -164,6 +165,7 @@ export async function addTaskComment(input: {
   taskId: string;
   author: string;
   body: string;
+  inReplyTo?: string | null;
 }): Promise<TaskComment> {
   const [row] = await db.insert(taskComments).values(input).returning();
   return row;
@@ -262,7 +264,7 @@ export async function getPlanActivity(
       taskTitle: null,
       author: c.author,
       body: c.body,
-      inReplyTo: (c as { inReplyTo?: string | null }).inReplyTo ?? null,
+      inReplyTo: c.inReplyTo ?? null,
       data: null,
     })),
     ...tComments.map(({ c, taskTitle }) => ({
@@ -274,7 +276,7 @@ export async function getPlanActivity(
       taskTitle,
       author: c.author,
       body: c.body,
-      inReplyTo: (c as { inReplyTo?: string | null }).inReplyTo ?? null,
+      inReplyTo: c.inReplyTo ?? null,
       data: null,
     })),
     ...evRows.map((e) => ({

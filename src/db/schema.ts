@@ -53,6 +53,10 @@ export const planComments = pgTable(
       .references(() => plans.id),
     author: text("author").notNull(), // free text: 'human:yilongli' / 'agent:dev-1'
     body: text("body").notNull(),
+    // optional pointer to another comment in the SAME stream. Keeps the stream a
+    // single linear time order (no threading tree) — it's just an anchor so a
+    // reply can say which comment it answers.
+    inReplyTo: uuid("in_reply_to"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -69,6 +73,7 @@ export const taskComments = pgTable(
       .references(() => tasks.id),
     author: text("author").notNull(),
     body: text("body").notNull(),
+    inReplyTo: uuid("in_reply_to"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

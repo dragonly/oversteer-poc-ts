@@ -97,12 +97,13 @@ function fmtComment(c: PlanComment | TaskComment): string {
 function fmtActivity(a: Activity): string {
   const when = ts(a.at);
   const task = a.taskTitle ? ` (${a.taskTitle})` : "";
+  const re = a.inReplyTo ? ` ↳ re:${a.inReplyTo.slice(0, 8)}` : "";
   const d = (a.data ?? {}) as Record<string, string>;
   switch (a.kind) {
     case "plan_comment":
-      return `${when}  💬 ${a.author} on plan\n    ${a.body}`;
+      return `${when}  💬 ${a.author} on plan${re}\n    ${a.body}`;
     case "task_comment":
-      return `${when}  💬 ${a.author} on task${task}\n    ${a.body}`;
+      return `${when}  💬 ${a.author} on task${task}${re}\n    ${a.body}`;
     case "task_created":
       return `${when}  ➕ task created${task} by ${a.author}`;
     case "status_changed":
@@ -228,10 +229,12 @@ comment
   .description("comment on a plan")
   .requiredOption("--author <author>", "e.g. agent:dev-1")
   .requiredOption("--text <text>", "comment body")
-  .action(async (planId: string, opts: { author: string; text: string }) => {
+  .option("--in-reply-to <commentId>", "id of the comment this answers (linear anchor, not threading)")
+  .action(async (planId: string, opts: { author: string; text: string; inReplyTo?: string }) => {
     const c = await req<PlanComment>("POST", `/plans/${planId}/comments`, {
       author: opts.author,
       body: opts.text,
+      inReplyTo: opts.inReplyTo,
     });
     out(() => console.log(fmtComment(c)), c);
   });
@@ -241,10 +244,12 @@ comment
   .description("comment on a task")
   .requiredOption("--author <author>", "e.g. agent:dev-1")
   .requiredOption("--text <text>", "comment body")
-  .action(async (taskId: string, opts: { author: string; text: string }) => {
+  .option("--in-reply-to <commentId>", "id of the comment this answers (linear anchor, not threading)")
+  .action(async (taskId: string, opts: { author: string; text: string; inReplyTo?: string }) => {
     const c = await req<TaskComment>("POST", `/tasks/${taskId}/comments`, {
       author: opts.author,
       body: opts.text,
+      inReplyTo: opts.inReplyTo,
     });
     out(() => console.log(fmtComment(c)), c);
   });

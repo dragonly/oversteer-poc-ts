@@ -50,7 +50,8 @@ app.post("/plans/:id/comments", async (c) => {
   const author = String(form.get("author") ?? "human:web").trim() || "human:web";
   const body = String(form.get("body") ?? "").trim();
   if (!body) return c.text("body required", 400);
-  await data.addPlanComment({ planId, author, body });
+  const inReplyTo = String(form.get("inReplyTo") ?? "").trim() || null;
+  await data.addPlanComment({ planId, author, body, inReplyTo });
   return c.redirect(`/plans/${planId}`);
 });
 
@@ -67,7 +68,8 @@ app.post("/tasks/:id/comments", async (c) => {
   const author = String(form.get("author") ?? "human:web").trim() || "human:web";
   const body = String(form.get("body") ?? "").trim();
   if (!body) return c.text("body required", 400);
-  await data.addTaskComment({ taskId, author, body });
+  const inReplyTo = String(form.get("inReplyTo") ?? "").trim() || null;
+  await data.addTaskComment({ taskId, author, body, inReplyTo });
   return c.redirect(`/tasks/${taskId}`);
 });
 
@@ -119,7 +121,7 @@ api.post("/plans/:id/comments", async (c) => {
   if (!(await data.getPlan(planId))) return c.json({ error: `plan not found: ${planId}` }, 404);
   const b = await c.req.json().catch(() => ({}) as Record<string, string>);
   if (!b.author || !b.body) return c.json({ error: "author and body required" }, 400);
-  return c.json(await data.addPlanComment({ planId, author: b.author, body: b.body }), 201);
+  return c.json(await data.addPlanComment({ planId, author: b.author, body: b.body, inReplyTo: b.inReplyTo }), 201);
 });
 
 api.get("/tasks/:id", async (c) => {
@@ -151,7 +153,7 @@ api.post("/tasks/:id/comments", async (c) => {
   if (!(await data.getTask(taskId))) return c.json({ error: `task not found: ${taskId}` }, 404);
   const b = await c.req.json().catch(() => ({}) as Record<string, string>);
   if (!b.author || !b.body) return c.json({ error: "author and body required" }, 400);
-  return c.json(await data.addTaskComment({ taskId, author: b.author, body: b.body }), 201);
+  return c.json(await data.addTaskComment({ taskId, author: b.author, body: b.body, inReplyTo: b.inReplyTo }), 201);
 });
 
 app.route("/api", api);

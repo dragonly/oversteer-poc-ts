@@ -79,9 +79,15 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
 
   if (item.kind === "plan_comment" || item.kind === "task_comment") {
     return (
-      <div class="comment">
+      <div class="comment" id={`c-${item.id}`}>
         <div class="muted">
           💬 {item.author} · {when} {taskTag}
+          {item.inReplyTo ? (
+            <>
+              {" "}
+              <a href={`#c-${item.inReplyTo}`}>↳ re: {item.inReplyTo.slice(0, 8)}</a>
+            </>
+          ) : null}
         </div>
         <div class="body">{raw(linkifyIds(md(item.body ?? "")))}</div>
       </div>
