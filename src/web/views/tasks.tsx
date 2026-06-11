@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { Task, TaskComment } from "../../db/schema.js";
 import { Layout } from "./Layout.js";
-import { Badge, PrLink, Comment, CommentForm } from "./components.js";
+import { Badge, PrLink, Comment, CommentForm, IntentText } from "./components.js";
 
 export const TaskDetailPage: FC<{
   task: Task;
@@ -14,7 +14,7 @@ export const TaskDetailPage: FC<{
     <h1>
       {task.title} <Badge status={task.status} />
     </h1>
-    <div class="intent">{task.intent}</div>
+    <IntentText text={task.intent} />
     {task.prRef ? (
       <p>
         PR: <PrLink refStr={task.prRef} />

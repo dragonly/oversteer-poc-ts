@@ -15,8 +15,13 @@ oversteer.ai 的 **POC**(不是 MVP)。刻意降到最小:人在 web UI 建 plan
 - TypeScript(用 `tsx` 直接跑,无构建步骤)
 - Drizzle ORM + drizzle-kit(schema 即 `src/db/schema.ts`,单一来源)
 - Postgres 18
-- CLI: commander  ·  Web: Hono(服务端渲染 HTML)
-- CLI 和 web 共用 `src/data/` 这一层数据访问函数,业务逻辑不重复。
+- CLI: commander  ·  Web: Hono(hono/jsx 服务端渲染 HTML)
+- **分层**:web server 既渲染 HTML(给人),又在 `/api/*` 暴露 JSON HTTP API(给 CLI)。
+  server 是唯一直连 Postgres 的进程;CLI 是 `/api/*` 之上的瘦 HTTP 客户端,**不再直连数据库**。
+  业务逻辑集中在 `src/data/`,只被 server 调用。
+
+> **CLI 依赖 server 在跑**:用 CLI 前先 `npm run web`(默认 http://localhost:4000)。
+> 用 `OVERSTEER_API` 环境变量可指向别的 server,例如 `OVERSTEER_API=http://host:4000 oversteer plan list`。
 
 ## 起步
 

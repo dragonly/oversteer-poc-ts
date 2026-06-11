@@ -1,14 +1,19 @@
 import type { FC } from "hono/jsx";
 import type { Plan, Task, PlanComment } from "../../db/schema.js";
+import type { Activity, Attention } from "../../data/index.js";
 import { Layout } from "./Layout.js";
-import { Badge, PrLink, Comment, CommentForm } from "./components.js";
+import { Badge, PrLink, ActivityRow, CommentForm, IntentText } from "./components.js";
 
-export const PlanListPage: FC<{ plans: Plan[] }> = ({ plans }) => (
+export const PlanListPage: FC<{ plans: Plan[]; attention: Attention[] }> = ({
+  plans,
+  attention,
+}) => (
   <Layout title="Plans">
     <h1>Plans</h1>
     {plans.length ? (
-      plans.map((p) => (
+      plans.map((p, i) => (
         <div class="card">
+          <span title={attention[i].state}>{attention[i].emoji} {attention[i].label}</span>{" "}
           <a href={`/plans/${p.id}`}>{p.title}</a> <Badge status={p.status} />
           <div class="muted">{p.id}</div>
         </div>
@@ -34,12 +39,25 @@ export const PlanDetailPage: FC<{
   plan: Plan;
   tasks: Task[];
   comments: PlanComment[];
-}> = ({ plan, tasks, comments }) => (
+  activity: Activity[];
+  attention: Attention;
+}> = ({ plan, tasks, activity, attention }) => (
   <Layout title={plan.title}>
+    <div class="card" title={attention.state}>
+      {attention.emoji} {attention.label}
+    </div>
     <h1>
       {plan.title} <Badge status={plan.status} />
     </h1>
-    <div class="intent">{plan.intent}</div>
+    <IntentText text={plan.intent} />
+    <details class="edit-intent">
+      <summary class="muted">edit intent</summary>
+      <form method="post" action={`/plans/${plan.id}/intent`}>
+        <input name="author" value="human:yilongli" />
+        <textarea name="intent" rows={8} required>{plan.intent}</textarea>
+        <button type="submit">Save intent</button>
+      </form>
+    </details>
     <div class="muted">{plan.id}</div>
 
     <h2>Tasks ({tasks.length})</h2>
@@ -56,10 +74,10 @@ export const PlanDetailPage: FC<{
       )}
     </div>
 
-    <h2>Comments ({comments.length})</h2>
-    <div data-live="plan-comments">
-      {comments.length ? (
-        comments.map((c) => <Comment comment={c} />)
+    <h2>Activity ({activity.length})</h2>
+    <div data-live="activity">
+      {activity.length ? (
+        activity.map((a) => <ActivityRow item={a} />)
       ) : (
         <p class="muted">(none)</p>
       )}
