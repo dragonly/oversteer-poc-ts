@@ -33,6 +33,13 @@ export const Badge: FC<{ status: string }> = ({ status }) => (
   <span class="badge">{status}</span>
 );
 
+// Render a markdown body (comment, document, evidence, …) with autolinked ids.
+// The single place markdown becomes HTML, so every surface shares one renderer
+// and one `.prose` stylesheet instead of each re-scoping its own CSS.
+export const Prose: FC<{ src: string }> = ({ src }) => (
+  <div class="prose">{raw(linkifyIds(md(src)))}</div>
+);
+
 // Render a PR ref like `owner/repo#42` as a clickable GitHub PR link.
 // Falls back to plain text for anything that doesn't match.
 export const PrLink: FC<{ refStr: string }> = ({ refStr }) => {
@@ -52,7 +59,7 @@ export const Comment: FC<{ comment: PlanComment | TaskComment }> = ({ comment })
     <div class="muted">
       {comment.author} · {comment.createdAt.toISOString()}
     </div>
-    <div class="body">{raw(linkifyIds(md(comment.body)))}</div>
+    <Prose src={comment.body} />
   </div>
 );
 
@@ -89,7 +96,7 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
             </>
           ) : null}
         </div>
-        <div class="body">{raw(linkifyIds(md(item.body ?? "")))}</div>
+        <Prose src={item.body ?? ""} />
       </div>
     );
   }
