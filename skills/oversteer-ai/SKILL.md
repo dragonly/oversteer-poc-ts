@@ -1,6 +1,6 @@
 ---
 name: oversteer-ai
-description: Use the oversteer POC CLI to read plans created by humans, break them into tasks, work and update those tasks, and comment on plans/tasks. Use whenever the agent is asked to "work on an oversteer plan", "pick up a task from oversteer", "check oversteer for what to do", "update the oversteer task", "comment on the plan/task in oversteer", or any variation that involves the `oversteer` command-line tool. Covers only the current POC surface (plan/task/comment over Postgres); there is no claim/escalate/steering/events yet.
+description: Use the oversteer POC CLI to read plans created by humans, break them into tasks, work and update those tasks, keep living documents (discovery/design/catalog/result) under a plan, and comment on plans/tasks. Use whenever the agent is asked to "work on an oversteer plan", "pick up a task from oversteer", "check oversteer for what to do", "update the oversteer task", "write/update the design doc in oversteer", "comment on the plan/task in oversteer", or any variation that involves the `oversteer` command-line tool. Covers the current POC surface (plan/task/document/comment + activity stream over Postgres); there is no claim/escalate/steering yet.
 ---
 
 # oversteer-ai
@@ -21,6 +21,12 @@ when you need to parse output programmatically; omit it for human-readable text.
   `prRef` (optional, e.g. `owner/repo#42`).
 - **comment** — a note on a plan or a task, by anyone (`author` is free text like `agent:dev-1`).
   No threading.
+- **document** — a living artifact under a plan: a `discovery` / `design` / `catalog` / `result` /
+  `note` (`kind` is free text). Fields: `id`, `planId`, `kind`, `title`, `body` (markdown/yaml).
+  Unlike a comment (a point-in-time note), a document is meant to be **re-edited in place**; each
+  edit is journaled so `document get` shows the current body plus its edit history. Use documents
+  for the things you'd otherwise dump into a giant comment: discovery findings, a design draft, an
+  API catalog, a final result write-up.
 
 ## Standard agent loop
 
@@ -30,7 +36,10 @@ when you need to parse output programmatically; omit it for human-readable text.
 4. **Claim & work**: mark a task `in_progress` (`task update <taskId> --status in_progress`).
 5. **Discuss when unsure**: `oversteer comment task <taskId> --author agent:<you> --text "..."`
    (in the POC there is no escalation/blocking — a comment is how you raise a question or note a decision).
-6. **Finish**: `oversteer task update <taskId> --status done --pr-ref owner/repo#NN`.
+6. **Capture living context**: put discovery findings / design drafts / catalogs / result write-ups
+   in a **document** (`document create` / `document update`) rather than a giant comment — documents
+   are meant to be re-edited in place and carry an edit history.
+7. **Finish**: `oversteer task update <taskId> --status done --pr-ref owner/repo#NN`.
 
 ## Commands (the entire POC surface)
 
@@ -58,21 +67,35 @@ oversteer comments plan <planId>          # read a plan's comment stream
 oversteer comments task <taskId>          # read a task's comment stream
 ```
 
+Documents (living artifacts under a plan):
+```
+oversteer document list --plan <planId>                      # id [kind] title
+oversteer document get <documentId>                          # body + edit history
+oversteer document create --plan <planId> --title "..." [--kind design] [--body "..." | --body-file path|-]
+oversteer document update <documentId> [--title "..."] [--kind ...] [--body "..." | --body-file path|-]
+```
+A body is usually multi-line markdown/yaml — prefer `--body-file <path>` (or `--body-file -` to read
+stdin) over cramming it into `--body`.
+
 ## `--json` output shapes
 
 - `plan list` → `Plan[]`
-- `plan get <id>` → `{ plan: Plan, tasks: Task[], comments: PlanComment[] }`
+- `plan get <id>` → `{ plan: Plan, tasks: Task[], comments: PlanComment[], documents: Document[] }`
 - `task list --plan <id>` → `Task[]`
 - `task get <id>` → `{ task: Task, comments: TaskComment[] }`
 - `task create` / `task update` → `Task`
 - `comment plan|task` → the created comment
 - `comments plan|task` → comment array
+- `document list --plan <id>` → `Document[]`
+- `document get <id>` → `{ document: Document, history: Event[] }`
+- `document create` / `document update` → `Document`
 
 ```
 Plan        { id, title, intent, status: 'open'|'done', createdAt, updatedAt }
 Task        { id, planId, title, intent, status: 'todo'|'in_progress'|'done', prRef, createdAt, updatedAt }
 PlanComment { id, planId, author, body, createdAt }
 TaskComment { id, taskId,  author, body, createdAt }
+Document    { id, planId, kind, title, body, createdAt, updatedAt }
 ```
 
 On error the CLI prints `{ "error": "..." }` (with `--json`) or `error: ...` to stderr, and exits non-zero.

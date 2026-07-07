@@ -81,6 +81,10 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
     <a class="badge" href={`/tasks/${item.taskId}`}>
       {item.taskTitle ?? "task"}
     </a>
+  ) : item.documentId ? (
+    <a class="badge" href={`/documents/${item.documentId}`}>
+      {item.documentTitle ?? "document"}
+    </a>
   ) : null;
   const d = (item.data ?? {}) as Record<string, string>;
 
@@ -111,6 +115,12 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
       break;
     case "pr_set":
       text = `🔗 pr ${d.ref}`;
+      break;
+    case "document_created":
+      text = `📄 document created`;
+      break;
+    case "document_edited":
+      text = `📝 document edited`;
       break;
     case "plan_intent_edited":
     case "task_intent_edited": {

@@ -92,6 +92,8 @@ export const eventKind = pgEnum("event_kind", [
   "pr_set",
   "plan_intent_edited",
   "task_intent_edited",
+  "document_created",
+  "document_edited",
 ]);
 
 export const events = pgTable(
@@ -103,6 +105,8 @@ export const events = pgTable(
       .references(() => plans.id),
     // null for plan-scoped events (e.g. plan_intent_edited); set for task-scoped.
     taskId: uuid("task_id").references(() => tasks.id),
+    // set for document-scoped events (document_created / document_edited).
+    documentId: uuid("document_id").references(() => documents.id),
     kind: eventKind("kind").notNull(),
     author: text("author").notNull(), // who triggered it: 'human:web' / 'agent:dev-1'
     // structured payload, kind-dependent: { from, to } | { ref } | { old, new }
@@ -116,6 +120,32 @@ export const events = pgTable(
 );
 
 export type Event = typeof events.$inferSelect;
+
+// document = a first-class living artifact under a plan (discovery / design /
+// catalog / result). The point isn't storage (git does that) but giving the agent
+// the *current* body + its edit history as live plan context in one CLI read.
+// `kind` is free text on purpose: the taxonomy will evolve during dogfood, and an
+// enum would force a migration every time — the POC note explicitly expects these
+// shapes to change.
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    kind: text("kind").notNull().default("note"), // discovery | design | catalog | result | note | …
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""), // markdown / yaml
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    planIdx: index("idx_documents_plan").on(t.planId),
+  }),
+);
+
+export type Document = typeof documents.$inferSelect;
 
 export type Plan = typeof plans.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
