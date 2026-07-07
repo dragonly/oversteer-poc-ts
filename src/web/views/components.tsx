@@ -33,6 +33,13 @@ export const Badge: FC<{ status: string }> = ({ status }) => (
   <span class="badge">{status}</span>
 );
 
+// Render a markdown body (comment, document, evidence, …) with autolinked ids.
+// The single place markdown becomes HTML, so every surface shares one renderer
+// and one `.prose` stylesheet instead of each re-scoping its own CSS.
+export const Prose: FC<{ src: string }> = ({ src }) => (
+  <div class="prose">{raw(linkifyIds(md(src)))}</div>
+);
+
 // Render a PR ref like `owner/repo#42` as a clickable GitHub PR link.
 // Falls back to plain text for anything that doesn't match.
 export const PrLink: FC<{ refStr: string }> = ({ refStr }) => {
@@ -52,7 +59,7 @@ export const Comment: FC<{ comment: PlanComment | TaskComment }> = ({ comment })
     <div class="muted">
       {comment.author} · {comment.createdAt.toISOString()}
     </div>
-    <div class="body">{raw(linkifyIds(md(comment.body)))}</div>
+    <Prose src={comment.body} />
   </div>
 );
 
@@ -74,6 +81,10 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
     <a class="badge" href={`/tasks/${item.taskId}`}>
       {item.taskTitle ?? "task"}
     </a>
+  ) : item.documentId ? (
+    <a class="badge" href={`/documents/${item.documentId}`}>
+      {item.documentTitle ?? "document"}
+    </a>
   ) : null;
   const d = (item.data ?? {}) as Record<string, string>;
 
@@ -89,7 +100,7 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
             </>
           ) : null}
         </div>
-        <div class="body">{raw(linkifyIds(md(item.body ?? "")))}</div>
+        <Prose src={item.body ?? ""} />
       </div>
     );
   }
@@ -104,6 +115,12 @@ export const ActivityRow: FC<{ item: Activity }> = ({ item }) => {
       break;
     case "pr_set":
       text = `🔗 pr ${d.ref}`;
+      break;
+    case "document_created":
+      text = `📄 document created`;
+      break;
+    case "document_edited":
+      text = `📝 document edited`;
       break;
     case "plan_intent_edited":
     case "task_intent_edited": {

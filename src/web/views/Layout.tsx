@@ -15,12 +15,12 @@ const STYLE = `
   input, textarea { font: inherit; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; width: 100%; box-sizing: border-box; }
   button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; width: fit-content; }
   .comment { border-left: 3px solid #ddd; padding: 0.25rem 0 0.25rem 0.75rem; margin: 0.5rem 0; }
-  .comment .body > :first-child { margin-top: 0.25rem; }
-  .comment .body > :last-child { margin-bottom: 0; }
-  .comment .body code { background: #8881; padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.9em; }
-  .comment .body pre { background: #8881; padding: 0.6rem 0.8rem; border-radius: 6px; overflow-x: auto; }
-  .comment .body pre code { background: none; padding: 0; }
-  .comment .body ol, .comment .body ul { padding-left: 1.4rem; }
+  .prose > :first-child { margin-top: 0.25rem; }
+  .prose > :last-child { margin-bottom: 0; }
+  .prose code { background: #8881; padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.9em; }
+  .prose pre { background: #8881; padding: 0.6rem 0.8rem; border-radius: 6px; overflow-x: auto; }
+  .prose pre code { background: none; padding: 0; }
+  .prose ol, .prose ul { padding-left: 1.4rem; }
   nav { margin-bottom: 1rem; }
 `;
 

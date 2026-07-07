@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import type { Plan, Task, PlanComment, TaskComment } from "../db/schema.js";
+import { readFileSync } from "node:fs";
+import type { Plan, Task, PlanComment, TaskComment, Document, Event } from "../db/schema.js";
 
 // The CLI is a thin HTTP client over the server's /api/* endpoints. It no longer
 // imports the data layer or touches Postgres — the server owns the DB. Point it
@@ -52,8 +53,9 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return json as T;
 }
 
-type PlanFull = { plan: Plan; tasks: Task[]; comments: PlanComment[] };
+type PlanFull = { plan: Plan; tasks: Task[]; comments: PlanComment[]; documents: Document[] };
 type TaskFull = { task: Task; comments: TaskComment[] };
+type DocumentFull = { document: Document; history: Event[] };
 
 type Activity = {
   id: string;
@@ -64,11 +66,15 @@ type Activity = {
     | "status_changed"
     | "pr_set"
     | "plan_intent_edited"
-    | "task_intent_edited";
+    | "task_intent_edited"
+    | "document_created"
+    | "document_edited";
   at: string;
   planId: string;
   taskId: string | null;
   taskTitle: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
   author: string;
   body: string | null;
   inReplyTo: string | null;
@@ -92,11 +98,16 @@ function fmtComment(c: PlanComment | TaskComment): string {
   return `  - ${c.author} @ ${ts(c.createdAt)}\n    ${c.body}`;
 }
 
+function fmtDoc(d: Document): string {
+  return `document ${d.id}  [${d.kind}]\n  title: ${d.title}\n\n${d.body}`;
+}
+
 // One line of context + (for comments) the body, so a reader sees the whole
 // stream in time order without cross-referencing tasks/comments by hand.
 function fmtActivity(a: Activity): string {
   const when = ts(a.at);
   const task = a.taskTitle ? ` (${a.taskTitle})` : "";
+  const docTag = a.documentTitle ? ` (${a.documentTitle})` : "";
   const re = a.inReplyTo ? ` ↳ re:${a.inReplyTo.slice(0, 8)}` : "";
   const d = (a.data ?? {}) as Record<string, string>;
   switch (a.kind) {
@@ -114,6 +125,10 @@ function fmtActivity(a: Activity): string {
       return `${when}  ✏️ plan intent edited by ${a.author}`;
     case "task_intent_edited":
       return `${when}  ✏️ task intent edited${task} by ${a.author}`;
+    case "document_created":
+      return `${when}  📄 document created${docTag} by ${a.author}`;
+    case "document_edited":
+      return `${when}  📝 document edited${docTag} by ${a.author}`;
     default:
       return `${when}  ${a.kind} by ${a.author}`;
   }
@@ -149,6 +164,8 @@ plan
     const full = await req<PlanFull>("GET", `/plans/${planId}`);
     out(() => {
       console.log(fmtPlan(full.plan));
+      console.log(`\ndocuments (${full.documents.length}):`);
+      for (const d of full.documents) console.log(`  ${d.id}  [${d.kind}]  ${d.title}`);
       console.log(`\ntasks (${full.tasks.length}):`);
       for (const t of full.tasks) console.log(`  ${t.id}  [${t.status}]  ${t.title}`);
       console.log(`\ncomments (${full.comments.length}):`);
@@ -218,6 +235,94 @@ task
         author: opts.author,
       });
       out(() => console.log(fmtTask(t)), t);
+    },
+  );
+
+// ---- document ----
+// A document body is markdown/yaml and often multi-line, so --body is awkward on
+// a shell. Support --body-file <path> (use '-' for stdin) as the ergonomic path
+// for agents piping a generated doc in; --body stays for quick one-liners.
+function resolveBody(opts: { body?: string; bodyFile?: string }): string | undefined {
+  if (opts.bodyFile !== undefined) {
+    return readFileSync(opts.bodyFile === "-" ? 0 : opts.bodyFile, "utf8");
+  }
+  return opts.body;
+}
+
+const document = program.command("document").description("read and write plan documents");
+
+document
+  .command("list")
+  .description("list documents of a plan")
+  .requiredOption("--plan <planId>", "plan id")
+  .action(async (opts: { plan: string }) => {
+    const rows = await req<Document[]>("GET", `/plans/${opts.plan}/documents`);
+    out(() => {
+      if (rows.length === 0) return console.log("(no documents)");
+      for (const d of rows) console.log(`${d.id}  [${d.kind}]  ${d.title}`);
+    }, rows);
+  });
+
+document
+  .command("get <documentId>")
+  .description("read a document (body + edit history)")
+  .action(async (documentId: string) => {
+    const full = await req<DocumentFull>("GET", `/documents/${documentId}`);
+    out(() => {
+      console.log(fmtDoc(full.document));
+      console.log(`\nhistory (${full.history.length}):`);
+      for (const e of full.history) console.log(`  ${e.kind} by ${e.author} @ ${ts(e.createdAt)}`);
+    }, full);
+  });
+
+document
+  .command("create")
+  .description("create a document under a plan")
+  .requiredOption("--plan <planId>", "plan id")
+  .requiredOption("--title <title>", "document title")
+  .option("--kind <kind>", "discovery | design | catalog | result | note", "note")
+  .option("--body <body>", "document body (markdown/yaml)")
+  .option("--body-file <path>", "read body from a file ('-' for stdin)")
+  .option("--author <author>", "who is creating it", "agent")
+  .action(
+    async (opts: {
+      plan: string;
+      title: string;
+      kind: string;
+      body?: string;
+      bodyFile?: string;
+      author: string;
+    }) => {
+      const d = await req<Document>("POST", `/plans/${opts.plan}/documents`, {
+        title: opts.title,
+        kind: opts.kind,
+        body: resolveBody(opts),
+        author: opts.author,
+      });
+      out(() => console.log(fmtDoc(d)), d);
+    },
+  );
+
+document
+  .command("update <documentId>")
+  .description("update a document's title / kind / body")
+  .option("--title <title>", "new title")
+  .option("--kind <kind>", "new kind")
+  .option("--body <body>", "new body (markdown/yaml)")
+  .option("--body-file <path>", "read new body from a file ('-' for stdin)")
+  .option("--author <author>", "who is making the change", "agent")
+  .action(
+    async (
+      documentId: string,
+      opts: { title?: string; kind?: string; body?: string; bodyFile?: string; author: string },
+    ) => {
+      const d = await req<Document>("PATCH", `/documents/${documentId}`, {
+        title: opts.title,
+        kind: opts.kind,
+        body: resolveBody(opts),
+        author: opts.author,
+      });
+      out(() => console.log(fmtDoc(d)), d);
     },
   );
 

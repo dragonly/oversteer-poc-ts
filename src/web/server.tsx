@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import * as data from "../data/index.js";
 import { PlanListPage, PlanDetailPage } from "./views/plans.js";
 import { TaskDetailPage } from "./views/tasks.js";
+import { DocumentDetailPage } from "./views/documents.js";
 
 const app = new Hono();
 
@@ -15,6 +16,7 @@ app.get("/go/:id", async (c) => {
   try {
     if (await data.getPlan(id)) return c.redirect(`/plans/${id}`);
     if (await data.getTask(id)) return c.redirect(`/tasks/${id}`);
+    if (await data.getDocument(id)) return c.redirect(`/documents/${id}`);
   } catch {
     // malformed id (not a uuid) — fall through to 404
   }
@@ -66,6 +68,43 @@ app.post("/plans/:id/comments", async (c) => {
   const inReplyTo = String(form.get("inReplyTo") ?? "").trim() || null;
   await data.addPlanComment({ planId, author, body, inReplyTo });
   return c.redirect(`/plans/${planId}`);
+});
+
+// create a document under a plan
+app.post("/plans/:id/documents", async (c) => {
+  const planId = c.req.param("id");
+  const form = await c.req.formData();
+  const author = String(form.get("author") ?? "human:web").trim() || "human:web";
+  const title = String(form.get("title") ?? "").trim();
+  const kind = String(form.get("kind") ?? "note").trim() || "note";
+  const body = String(form.get("body") ?? "");
+  if (!title) return c.text("title required", 400);
+  const doc = await data.createDocument({ planId, title, kind, body, author });
+  return c.redirect(`/documents/${doc.id}`);
+});
+
+// document detail: living body + edit form + its edit history
+app.get("/documents/:id", async (c) => {
+  const full = await data.getDocumentFull(c.req.param("id"));
+  if (!full) return c.text("document not found", 404);
+  return c.html(<DocumentDetailPage {...full} />);
+});
+
+app.post("/documents/:id", async (c) => {
+  const id = c.req.param("id");
+  const form = await c.req.formData();
+  const author = String(form.get("author") ?? "human:web").trim() || "human:web";
+  const title = String(form.get("title") ?? "").trim();
+  const kind = String(form.get("kind") ?? "").trim();
+  const body = String(form.get("body") ?? "");
+  const updated = await data.updateDocument(id, {
+    title: title || undefined,
+    kind: kind || undefined,
+    body,
+    author,
+  });
+  if (!updated) return c.text("document not found", 404);
+  return c.redirect(`/documents/${id}`);
 });
 
 // task detail: task + task comments
@@ -130,6 +169,49 @@ api.post("/plans/:id/tasks", async (c) => {
 });
 
 api.get("/plans/:id/comments", async (c) => c.json(await data.listPlanComments(c.req.param("id"))));
+
+// documents under a plan
+api.get("/plans/:id/documents", async (c) => {
+  const id = c.req.param("id");
+  if (!(await data.getPlan(id))) return c.json({ error: `plan not found: ${id}` }, 404);
+  return c.json(await data.listDocumentsByPlan(id));
+});
+
+api.post("/plans/:id/documents", async (c) => {
+  const planId = c.req.param("id");
+  if (!(await data.getPlan(planId))) return c.json({ error: `plan not found: ${planId}` }, 404);
+  const b = await c.req.json().catch(() => ({}) as Record<string, string>);
+  if (!b.title) return c.json({ error: "title required" }, 400);
+  return c.json(
+    await data.createDocument({
+      planId,
+      title: b.title,
+      kind: b.kind,
+      body: b.body,
+      author: b.author,
+    }),
+    201,
+  );
+});
+
+api.get("/documents/:id", async (c) => {
+  const full = await data.getDocumentFull(c.req.param("id"));
+  if (!full) return c.json({ error: `document not found: ${c.req.param("id")}` }, 404);
+  return c.json(full);
+});
+
+api.patch("/documents/:id", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json().catch(() => ({}) as Record<string, string>);
+  const updated = await data.updateDocument(id, {
+    title: b.title,
+    kind: b.kind,
+    body: b.body,
+    author: b.author,
+  });
+  if (!updated) return c.json({ error: `document not found: ${id}` }, 404);
+  return c.json(updated);
+});
 
 // Unified, incremental activity stream: every change anywhere under the plan
 // (plan + all tasks), time-ordered, optionally only what's new since ?since=<ISO>.

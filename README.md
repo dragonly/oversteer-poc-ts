@@ -8,7 +8,7 @@ oversteer.ai 的 **POC**(不是 MVP)。刻意降到最小:人在 web UI 建 plan
 
 1. **人**(web UI):创建 plan,读 plan / task / comment,在 plan/task 上评论。
 2. **agent**(CLI):读 plan,读写 task(完成 plan),在 plan/task 上评论。
-3. **存储**:Postgres,4 张表(`plans` / `tasks` / `plan_comments` / `task_comments`),id 用 uuid。
+3. **存储**:Postgres,主要表(`plans` / `tasks` / `documents` / `plan_comments` / `task_comments` / `events`),id 用 uuid。document 是挂在 plan 下的活文档(discovery / design / catalog / result),可原地反复编辑,每次编辑进 events 审计流。
 
 ## 技术栈
 

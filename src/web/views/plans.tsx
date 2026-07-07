@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import type { Plan, Task, PlanComment } from "../../db/schema.js";
+import type { Plan, Task, PlanComment, Document } from "../../db/schema.js";
 import type { Activity, Attention } from "../../data/index.js";
 import { Layout } from "./Layout.js";
 import { Badge, PrLink, ActivityRow, CommentForm, IntentText } from "./components.js";
@@ -39,9 +39,10 @@ export const PlanDetailPage: FC<{
   plan: Plan;
   tasks: Task[];
   comments: PlanComment[];
+  documents: Document[];
   activity: Activity[];
   attention: Attention;
-}> = ({ plan, tasks, activity, attention }) => (
+}> = ({ plan, tasks, documents, activity, attention }) => (
   <Layout title={plan.title}>
     <div class="card" title={attention.state}>
       {attention.emoji} {attention.label}
@@ -59,6 +60,29 @@ export const PlanDetailPage: FC<{
       </form>
     </details>
     <div class="muted">{plan.id}</div>
+
+    <h2>Documents ({documents.length})</h2>
+    <div data-live="documents">
+      {documents.length ? (
+        documents.map((d) => (
+          <div class="card">
+            <a href={`/documents/${d.id}`}>{d.title}</a> <Badge status={d.kind} />
+          </div>
+        ))
+      ) : (
+        <p class="muted">(no documents yet)</p>
+      )}
+    </div>
+    <details class="edit-intent">
+      <summary class="muted">new document</summary>
+      <form method="post" action={`/plans/${plan.id}/documents`}>
+        <input name="author" value="human:yilongli" />
+        <input name="title" placeholder="title" required />
+        <input name="kind" placeholder="kind (discovery/design/catalog/result/note)" value="note" />
+        <textarea name="body" placeholder="markdown / yaml body" rows={8}></textarea>
+        <button type="submit">Create document</button>
+      </form>
+    </details>
 
     <h2>Tasks ({tasks.length})</h2>
     <div data-live="tasks">

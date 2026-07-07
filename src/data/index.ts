@@ -6,11 +6,13 @@ import {
   planComments,
   taskComments,
   events,
+  documents,
   type Plan,
   type Task,
   type PlanComment,
   type TaskComment,
   type Event,
+  type Document,
 } from "../db/schema.js";
 
 // ---- plans ----
@@ -70,16 +72,18 @@ export async function getPlanFull(id: string): Promise<
       plan: Plan;
       tasks: Task[];
       comments: PlanComment[];
+      documents: Document[];
     }
   | undefined
 > {
   const plan = await getPlan(id);
   if (!plan) return undefined;
-  const [planTasks, comments] = await Promise.all([
+  const [planTasks, comments, docs] = await Promise.all([
     listTasksByPlan(id),
     listPlanComments(id),
+    listDocumentsByPlan(id),
   ]);
-  return { plan, tasks: planTasks, comments };
+  return { plan, tasks: planTasks, comments, documents: docs };
 }
 
 // ---- tasks ----
@@ -167,6 +171,98 @@ export async function getTaskFull(
   return { task, comments };
 }
 
+// ---- documents ----
+
+export async function createDocument(input: {
+  planId: string;
+  title: string;
+  kind?: string;
+  body?: string;
+  author?: string;
+}): Promise<Document> {
+  const [row] = await db
+    .insert(documents)
+    .values({
+      planId: input.planId,
+      title: input.title,
+      kind: input.kind ?? "note",
+      body: input.body ?? "",
+    })
+    .returning();
+  await addEvent({
+    planId: row.planId,
+    documentId: row.id,
+    kind: "document_created",
+    author: input.author ?? "agent",
+    data: { title: row.title, docKind: row.kind },
+  });
+  return row;
+}
+
+export async function listDocumentsByPlan(planId: string): Promise<Document[]> {
+  return db
+    .select()
+    .from(documents)
+    .where(eq(documents.planId, planId))
+    .orderBy(asc(documents.createdAt));
+}
+
+export async function getDocument(id: string): Promise<Document | undefined> {
+  const [row] = await db.select().from(documents).where(eq(documents.id, id));
+  return row;
+}
+
+// Edit a document's body/title/kind. A body change records a document_edited
+// event carrying the old→new body diff, so the edit shows up in the plan activity
+// stream (and an agent polling ?since sees "the live doc changed"). Consistent
+// with how plan/task intent edits are journaled.
+export async function updateDocument(
+  id: string,
+  patch: { title?: string; kind?: string; body?: string; author?: string },
+): Promise<Document | undefined> {
+  const prev = await getDocument(id);
+  if (!prev) return undefined;
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.title !== undefined) set.title = patch.title;
+  if (patch.kind !== undefined) set.kind = patch.kind;
+  if (patch.body !== undefined) set.body = patch.body;
+  const [row] = await db.update(documents).set(set).where(eq(documents.id, id)).returning();
+  if (!row) return undefined;
+  const changedBody = patch.body !== undefined && patch.body !== prev.body;
+  const changedTitle = patch.title !== undefined && patch.title !== prev.title;
+  const changedKind = patch.kind !== undefined && patch.kind !== prev.kind;
+  if (changedBody || changedTitle || changedKind) {
+    await addEvent({
+      planId: row.planId,
+      documentId: row.id,
+      kind: "document_edited",
+      author: patch.author ?? "agent",
+      data: {
+        title: row.title,
+        ...(changedBody ? { old: prev.body, new: row.body } : {}),
+        ...(changedTitle ? { oldTitle: prev.title, newTitle: row.title } : {}),
+        ...(changedKind ? { oldKind: prev.kind, newKind: row.kind } : {}),
+      },
+    });
+  }
+  return row;
+}
+
+// A document plus its own edit history (the document_* events scoped to it),
+// time-ordered, so the CLI/web can show the living doc + how it evolved in one read.
+export async function getDocumentFull(
+  id: string,
+): Promise<{ document: Document; history: Event[] } | undefined> {
+  const document = await getDocument(id);
+  if (!document) return undefined;
+  const history = await db
+    .select()
+    .from(events)
+    .where(eq(events.documentId, id))
+    .orderBy(asc(events.createdAt));
+  return { document, history };
+}
+
 // ---- comments ----
 
 export async function addPlanComment(input: {
@@ -210,6 +306,7 @@ export async function listTaskComments(taskId: string): Promise<TaskComment[]> {
 export async function addEvent(input: {
   planId: string;
   taskId?: string | null;
+  documentId?: string | null;
   kind: Event["kind"];
   author: string;
   data?: Record<string, unknown>;
@@ -219,6 +316,7 @@ export async function addEvent(input: {
     .values({
       planId: input.planId,
       taskId: input.taskId ?? null,
+      documentId: input.documentId ?? null,
       kind: input.kind,
       author: input.author,
       data: input.data ?? null,
@@ -241,6 +339,8 @@ export type Activity = {
   planId: string;
   taskId: string | null;
   taskTitle: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
   author: string;
   body: string | null; // comment body, null for state events
   inReplyTo: string | null;
@@ -279,6 +379,8 @@ export async function getPlanActivity(
   ]);
 
   const titleOf = new Map(planTasks.map((t) => [t.id, t.title] as const));
+  const planDocs = await listDocumentsByPlan(planId);
+  const docTitleOf = new Map(planDocs.map((d) => [d.id, d.title] as const));
 
   const stream: Activity[] = [
     ...pComments.map((c) => ({
@@ -288,6 +390,8 @@ export async function getPlanActivity(
       planId,
       taskId: null,
       taskTitle: null,
+      documentId: null,
+      documentTitle: null,
       author: c.author,
       body: c.body,
       inReplyTo: c.inReplyTo ?? null,
@@ -300,6 +404,8 @@ export async function getPlanActivity(
       planId,
       taskId: c.taskId,
       taskTitle,
+      documentId: null,
+      documentTitle: null,
       author: c.author,
       body: c.body,
       inReplyTo: c.inReplyTo ?? null,
@@ -312,6 +418,10 @@ export async function getPlanActivity(
       planId,
       taskId: e.taskId,
       taskTitle: e.taskId ? (titleOf.get(e.taskId) ?? null) : null,
+      documentId: e.documentId,
+      documentTitle: e.documentId
+        ? (docTitleOf.get(e.documentId) ?? ((e.data as Record<string, unknown>)?.title as string) ?? null)
+        : null,
       author: e.author,
       body: null,
       inReplyTo: null,
